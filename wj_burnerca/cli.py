@@ -320,9 +320,6 @@ def _run_in_workdir(opts: Options, workdir: Path) -> int:
         )
         return EXIT_DESTROY
     print("✓ CA private key destroyed")
-    caveat = destroy.secure_deletion_caveat()
-    if caveat:
-        print(f"  {caveat}")
 
     # Step 6: drop openssl scratch files, then stage outputs into --out. Atomic-ish:
     # --out is empty (or wiped via --force) before any files land in it.

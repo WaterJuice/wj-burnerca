@@ -3,4 +3,6 @@ site_name: wj-burnerca
 
 nav:
   - Home: index.md
+  - Command Line Usage: cli.md
+  - Release Notes: release-notes.md
   - license.md

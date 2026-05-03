@@ -20,8 +20,8 @@ Two safety properties are load-bearing and must not regress:
    trust evaluators silently ignore it.
 2. **The CA private key is destroyed before exit.** There is no escape
    hatch. The key must never be copied to `--out`, even transiently. All
-   CA key material lives only inside the tempdir and is securely removed
-   when the tool exits.
+   CA key material lives only inside the tempdir and is removed when
+   the tool exits.
 
 Surface area is intentionally tiny. The CLI takes one positional
 `domain` argument plus `--days`, `--out`, `--force`. Don't add flags
@@ -114,7 +114,7 @@ wj-burnerca/
 │   ├── ca.py                # Root CA key + cert (constraint scoped to domain)
 │   ├── leaf.py              # Cert key + CSR + signed cert (SANs: domain + *.domain)
 │   ├── verify.py            # Chain verification
-│   ├── destroy.py           # Platform-aware key shredding
+│   ├── destroy.py           # Overwrite-then-unlink for the CA key
 │   ├── manifest.py          # MANIFEST.txt + trust-instructions.md
 │   ├── openssl.py           # Thin wrapper over openssl subprocess
 │   ├── paths.py             # Tempdir + atomic output staging

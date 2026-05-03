@@ -2,15 +2,10 @@
 #   destroy.py
 #   ----------
 #
-#   Platform-aware secure deletion of the CA private key.
+#   Overwrite-then-unlink for the CA private key.
 #
-#   Linux:   `shred -u -z`             (overwrite + final zero pass, then unlink)
-#   macOS:   `rm -P`                   (overwrite three times, then unlink)
-#   Other:   plain `Path.unlink()`     (with caveat printed by the caller)
-#
-#   On modern SSDs with TRIM, "secure" overwrite is best-effort regardless of OS.
-#   The leaf cert is the persistent risk surface, not the destroyed root; the
-#   security model accepts this.
+#   The file is opened in place (no truncate), overwritten with one block-aligned
+#   write of `secrets.token_bytes`, fsynced, and unlinked.
 #
 #   (c) 2026 WaterJuice — Unlicense; see LICENSE in the project root.
 #
@@ -23,35 +18,16 @@
 #   Imports
 # ----------------------------------------------------------------------------------------
 
-import shutil
-import subprocess
-import sys
+import os
+import secrets
 from pathlib import Path
 
 # ----------------------------------------------------------------------------------------
-#   Module state
+#   Constants
 # ----------------------------------------------------------------------------------------
 
-# Resolve the platform-appropriate shredder argv prefix once, at module load.
-#
-# `_PLATFORM: str` (rather than letting it inherit `Literal[...]` from sys.platform)
-# stops pyright from narrowing the cross-platform branches to dead code on a given
-# build host — every branch needs to be reachable on its own OS at runtime.
-_PLATFORM: str = sys.platform
-
-
-# ----------------------------------------------------------------------------------------
-def _resolve_shred_prefix() -> list[str] | None:
-    """Argv prefix (without the path) to invoke a real shredder, or None."""
-    if _PLATFORM == "linux" and shutil.which("shred"):
-        return ["shred", "-u", "-z"]
-    if _PLATFORM == "darwin" and shutil.which("rm"):
-        # macOS `rm -P` overwrites with three passes (0xff, 0x00, 0xff) before unlinking.
-        return ["rm", "-P"]
-    return None
-
-
-_SHRED_PREFIX: list[str] | None = _resolve_shred_prefix()
+# Fallback if `os.statvfs` fails (it shouldn't on macOS/Linux, but be defensive).
+_FALLBACK_BLOCK_SIZE = 4096
 
 # ----------------------------------------------------------------------------------------
 #   Public API
@@ -60,33 +36,26 @@ _SHRED_PREFIX: list[str] | None = _resolve_shred_prefix()
 
 # ----------------------------------------------------------------------------------------
 def shred_file(path: Path) -> None:
-    """Securely delete a single file.
+    """Overwrite `path` with random bytes, fsync, then unlink it.
 
-    Picks the best available tool for the host OS and falls back to a plain
-    unlink. Raises RuntimeError if the file still exists after the attempt (the
-    caller treats that as exit code 5).
+    Raises FileNotFoundError if `path` doesn't exist. Raises RuntimeError if the
+    file still exists after the unlink (the caller treats that as exit code 5).
     """
-    if _SHRED_PREFIX is not None:
-        _run([*_SHRED_PREFIX, str(path)])
-    else:
-        path.unlink()
+    block_size = _block_size_for(path)
+    file_size = path.stat().st_size
+    write_size = max(_round_up(file_size, block_size), block_size)
+
+    fd = os.open(path, os.O_WRONLY)
+    try:
+        os.write(fd, secrets.token_bytes(write_size))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+    path.unlink()
 
     if path.exists():
-        raise RuntimeError(f"shred attempt completed but file still present: {path}")
-
-
-# ----------------------------------------------------------------------------------------
-def secure_deletion_caveat() -> str | None:
-    """Return a one-line caveat string if the host can't do better than unlink.
-
-    Returns None on Linux/macOS where we have a real shredder.
-    """
-    if _SHRED_PREFIX is not None:
-        return None
-    return (
-        "Note: secure overwrite is not available on this platform; "
-        "the CA key was unlinked but its blocks may remain on disk."
-    )
+        raise RuntimeError(f"unlink completed but file still present: {path}")
 
 
 # ----------------------------------------------------------------------------------------
@@ -95,10 +64,22 @@ def secure_deletion_caveat() -> str | None:
 
 
 # ----------------------------------------------------------------------------------------
-def _run(argv: list[str]) -> None:
-    """Run a shred-equivalent subprocess; raise on non-zero exit."""
-    proc = subprocess.run(argv, capture_output=True, text=True, check=False)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"{argv[0]} exited {proc.returncode}: {proc.stderr.strip() or proc.stdout.strip()}"
-        )
+def _block_size_for(path: Path) -> int:
+    """Return the filesystem's preferred I/O block size for `path`.
+
+    Falls back to `_FALLBACK_BLOCK_SIZE` if `statvfs` is unavailable or returns
+    something nonsensical.
+    """
+    try:
+        bsize = os.statvfs(path).f_bsize
+    except OSError:
+        return _FALLBACK_BLOCK_SIZE
+    return bsize if bsize > 0 else _FALLBACK_BLOCK_SIZE
+
+
+# ----------------------------------------------------------------------------------------
+def _round_up(value: int, multiple: int) -> int:
+    """Smallest multiple of `multiple` that is >= `value`. Treats 0 as 0."""
+    if value <= 0:
+        return 0
+    return ((value + multiple - 1) // multiple) * multiple

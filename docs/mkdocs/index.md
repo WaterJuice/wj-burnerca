@@ -23,15 +23,19 @@ domain. If it leaks, the attacker can MITM anything you visit.
   cryptographically incapable of signing certs outside the one domain
   you gave it. Modern TLS libraries and browsers enforce this.
 - **Key destruction:** after issuing the cert, the CA private key is
-  securely deleted.
+  deleted.
 
 ## Installation
 
 ```bash
-uvx wj-burnerca example.test
-# or
-uv pip install wj-burnerca
-pip install wj-burnerca
+# One-shot, no install — fetches into a cache and runs:
+uvx wj-burnerca example.com
+
+# Install globally with uv:
+uv tool install wj-burnerca
+
+# Install globally with pipx:
+pipx install wj-burnerca
 ```
 
 Requires Python 3.14+ and an `openssl` binary on `PATH` (LibreSSL 3.x
@@ -41,13 +45,13 @@ as shipped by macOS, or OpenSSL 3.x — both work).
 
 ```bash
 # Default: 365-day validity, output to ./<domain>/
-uvx wj-burnerca example.test
+wj-burnerca example.com
 
 # Shorter validity
-uvx wj-burnerca example.test --days 30
+wj-burnerca example.com --days 30
 
 # Custom output dir
-uvx wj-burnerca example.test --out ./dev/ca/
+wj-burnerca example.com --out ./dev/ca/
 ```
 
 After a successful run, the output directory contains:
@@ -97,8 +101,5 @@ export CURL_CA_BUNDLE="$(pwd)/rootCA-<domain>.crt"  # curl
 - `4` — `--out` directory exists and is non-empty without `--force`.
 - `5` — could not destroy CA private key. Path is printed loudly.
 
-## CLI Reference
-
-```
---8<-- "_generated_command_line_help.txt"
-```
+See the [Command Line Usage](cli.md) page for the full flag reference,
+and [Release Notes](release-notes.md) for what's changed.
