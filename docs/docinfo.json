@@ -1,0 +1,4 @@
+{
+    "name": "wj-burnerca",
+    "description": "Single-shot, name-constrained, self-destroying CA for local dev TLS"
+}

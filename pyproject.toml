@@ -1,0 +1,88 @@
+[project]
+name = "wj-burnerca"
+dynamic = ["version"]
+description = "Single-shot, name-constrained, self-destroying CA for local dev TLS"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+license = "Unlicense"
+license-files = ["LICENSE"]
+authors = [
+    { name = "WaterJuice" },
+]
+keywords = ["tls", "ssl", "ca", "certificate", "x509", "name-constraints", "dev", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: The Unlicense (Unlicense)",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Build Tools",
+]
+
+[project.urls]
+Repository = "https://github.com/WaterJuice/wj-burnerca"
+Documentation = "https://docs.waterjuice.org/wj-burnerca/"
+
+[project.scripts]
+wj-burnerca = "wj_burnerca.cli:main"
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+pattern = "default-unprefixed"
+
+[tool.hatch.build]
+# Include _version.py in builds even though it's gitignored (generated at build time)
+artifacts = ["wj_burnerca/_version.py"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["wj_burnerca"]
+
+[tool.cal-publish-python]
+profile = "waterjuice"
+
+[tool.uv]
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+extend-select = ["F", "E", "W", "I", "Q", "B", "TC", "UP"]
+ignore = ["E501", "B009", "B010", "UP036", "TC001", "TC003"]
+
+[tool.ruff.lint.isort]
+no-lines-before = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+force-single-line = true
+
+[tool.pyright]
+typeCheckingMode = "strict"
+reportUnusedImport = "error"
+pythonVersion = "3.14"
+# Tests are excluded from strict typing: pytest fixtures + dynamic discovery generate
+# pyright noise that doesn't reflect real bugs. The test suite is exercised by `make
+# test` and CI, not by `make lint`.
+exclude = ["tests", ".venv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "pyright[nodejs]",
+    "pytest",
+    "cal-mkdocs",
+    "cal-publish-python>=0.4.0",
+]
