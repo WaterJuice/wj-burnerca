@@ -26,7 +26,7 @@ classifiers = [
 
 [project.urls]
 Repository = "https://github.com/WaterJuice/wj-burnerca"
-Documentation = "https://docs.waterjuice.org/wj-burnerca/"
+Documentation = "https://docs.waterjuice.org/wj-burnerca/latest/"
 
 [project.scripts]
 wj-burnerca = "wj_burnerca.cli:main"

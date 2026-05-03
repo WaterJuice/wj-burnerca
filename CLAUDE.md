@@ -40,8 +40,8 @@ hold the tool wrong.
   to both libraries. Don't try to switch without confirming LibreSSL 3.3
   support first.
 - **Python 3.14+**.
-- **Auditable.** The whole tool should fit in roughly 500 LOC of
-  first-party code so a reader can audit it in one sitting.
+- **Auditable.** First-party code is around 700 LOC — small enough to
+  read in one sitting before trusting it.
 
 ## Language and Spelling
 
