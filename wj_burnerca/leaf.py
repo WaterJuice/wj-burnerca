@@ -59,11 +59,12 @@ def issue_cert(workdir: Path, root: RootCA, *, domain: str, days: int) -> Issued
 
     ext_path.write_text(_render_extensions(sans))
 
-    # ECDSA P-256 — see module docstring.
+    # ECDSA P-256 with named-curve encoding — see ca.py for why the latter matters.
     openssl.run([
         "genpkey",
         "-algorithm", "EC",
         "-pkeyopt", "ec_paramgen_curve:P-256",
+        "-pkeyopt", "ec_param_enc:named_curve",
         "-out", str(key_path),
     ])  # fmt: skip
     key_path.chmod(0o600)

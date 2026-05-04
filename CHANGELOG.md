@@ -1,3 +1,22 @@
+# wj-burnerca 1.0.0 Beta 2 - 4 May 2026
+
+## Fixed
+
+- **EC keys are now generated with named-curve parameter encoding.**
+  Beta 1 minted the CA and leaf keys with `genpkey -algorithm EC
+  -pkeyopt ec_paramgen_curve:P-256`, which (on both OpenSSL 3.x and
+  LibreSSL 3.3.x) produced keys whose SubjectPublicKeyInfo embedded
+  the explicit P-256 curve parameters (prime, A, B, generator, order,
+  cofactor, seed) inline rather than just the named-curve OID. macOS's
+  `Security.framework` refuses to load such keys
+  (`errSecInvalidKeyRef`, -67712), so the CA cert was un-importable
+  via Keychain Access and `security add-trusted-cert`. Both `genpkey`
+  calls now also pass `-pkeyopt ec_param_enc:named_curve`, producing
+  certs whose pubkey dump shows `ASN1 OID: prime256v1` /
+  `NIST CURVE: P-256`. The cert verified fine on every other stack
+  (OpenSSL, Go, Python `ssl`, `curl`/`SSL_CERT_FILE`) before this fix
+  too — this was a macOS-specific encoding gripe.
+
 # wj-burnerca 1.0.0 Beta 1 - 3 May 2026
 
 Initial release.

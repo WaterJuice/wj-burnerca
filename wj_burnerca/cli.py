@@ -129,23 +129,23 @@ def parse_args(argv: list[str]) -> Namespace:
         ),
     )
     p.add_argument(
-        "--days",
+        "--days", "-d",
         type=int,
         default=DEFAULT_DAYS,
         metavar="N",
         help=f"Validity in days, 1..{MAX_DAYS} (default: {DEFAULT_DAYS}).",
-    )
+    )  # fmt: skip
     p.add_argument(
-        "--out",
+        "--out", "-o",
         default=None,
         metavar="DIR",
         help="Output directory (default: ./<domain>/).",
-    )
+    )  # fmt: skip
     p.add_argument(
-        "--force",
+        "--force", "-f",
         action="store_true",
         help="Overwrite an existing non-empty --out directory.",
-    )
+    )  # fmt: skip
     p.add_argument(
         "--license",
         action="version",

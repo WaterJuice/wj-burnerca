@@ -101,12 +101,12 @@ in `trust-instructions.md` install into the **user** keychain only.
 
 ## Flags
 
-| Flag             | Required | Default          | Description                                                                                                                |
-|------------------|----------|------------------|----------------------------------------------------------------------------------------------------------------------------|
-| `domain`         | Yes      | —                | Bare domain (e.g. `example.com`). The CA is name-constrained to this domain; the cert covers `<domain>` and `*.<domain>`. |
-| `--days N`       | No       | `365`            | Validity for both the CA and the cert (they expire together). Range 1–365.                                                 |
-| `--out DIR`      | No       | `./<domain>/`    | Output directory.                                                                                                          |
-| `--force`        | No       | off              | Overwrite an existing non-empty `--out` directory.                                                                         |
+| Flag                | Required | Default          | Description                                                                                                                |
+|---------------------|----------|------------------|----------------------------------------------------------------------------------------------------------------------------|
+| `domain`            | Yes      | —                | Bare domain (e.g. `example.com`). The CA is name-constrained to this domain; the cert covers `<domain>` and `*.<domain>`. |
+| `--days N`, `-d N`  | No       | `365`            | Validity for both the CA and the cert (they expire together). Range 1–365.                                                 |
+| `--out DIR`, `-o`   | No       | `./<domain>/`    | Output directory.                                                                                                          |
+| `--force`, `-f`     | No       | off              | Overwrite an existing non-empty `--out` directory.                                                                         |
 
 That's it.
 

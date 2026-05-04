@@ -73,10 +73,15 @@ def generate_root_ca(workdir: Path, *, domain: str, days: int) -> RootCA:
     cert_path = workdir / f"{stem}.crt"
 
     # ECDSA P-256 — best modern curve available on both OpenSSL 3.x and LibreSSL 3.3.x.
+    # `ec_param_enc:named_curve` is load-bearing for macOS keychain trust: without it,
+    # the CA's SubjectPublicKeyInfo embeds explicit curve parameters (prime, A, B,
+    # generator, order…) and Security.framework refuses to load the key. The cert is
+    # otherwise valid and verifies fine on every other stack we care about.
     openssl.run([
         "genpkey",
         "-algorithm", "EC",
         "-pkeyopt", "ec_paramgen_curve:P-256",
+        "-pkeyopt", "ec_param_enc:named_curve",
         "-out", str(key_path),
     ])  # fmt: skip
 

@@ -23,6 +23,19 @@ Two safety properties are load-bearing and must not regress:
    CA key material lives only inside the tempdir and is removed when
    the tool exits.
 
+A third, quieter invariant — added in Beta 2 after a macOS keychain
+import bug: **EC keys must be encoded with the named-curve OID, not
+explicit parameters.** `Security.framework` refuses to load EC keys
+whose SubjectPublicKeyInfo embeds the explicit P-256 prime/A/B/
+generator/order block (`errSecInvalidKeyRef`, -67712), which made
+Beta 1's CA un-importable via Keychain Access and
+`security add-trusted-cert`. The fix is `-pkeyopt
+ec_param_enc:named_curve` on every `genpkey` call — see the comment in
+`ca.py`. If you ever change how keys are minted, verify with
+`openssl x509 -text` that the pubkey dump shows
+`ASN1 OID: prime256v1` rather than the long
+`Field Type / Prime / A / B / Generator / Order` block.
+
 Surface area is intentionally tiny. The CLI takes one positional
 `domain` argument plus `--days`, `--out`, `--force`. Don't add flags
 without a clear, repeated user need: every flag is an opportunity to
