@@ -12,7 +12,7 @@ authors = [
 ]
 keywords = ["tls", "ssl", "ca", "certificate", "x509", "name-constraints", "dev", "cli"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: The Unlicense (Unlicense)",
@@ -25,8 +25,8 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/WaterJuice/wj-burnerca"
 Documentation = "https://docs.waterjuice.org/wj-burnerca/latest/"
+Source = "https://github.com/WaterJuice/wj-burnerca"
 
 [project.scripts]
 wj-burnerca = "wj_burnerca.cli:main"
@@ -49,7 +49,7 @@ artifacts = ["wj_burnerca/_version.py"]
 [tool.hatch.build.targets.wheel]
 packages = ["wj_burnerca"]
 
-[tool.cal-publish-python]
+[tool.wj-publish]
 profile = "waterjuice"
 
 [tool.uv]
@@ -83,6 +83,6 @@ dev = [
     "ruff",
     "pyright[nodejs]",
     "pytest",
-    "cal-mkdocs",
-    "cal-publish-python>=0.4.0",
+    "wj-mkdocs",
+    "wj-publish",
 ]

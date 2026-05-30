@@ -33,14 +33,14 @@ build: check-dependencies format-check lint version docs
 # Publish (requires output/ from make build)
 .PHONY: publish
 publish: check-dependencies
-	uv run cal-publish-python --set-latest output/
+	uv run wj-publish output/
 
 # Build the documentation
 .PHONY: docs
 docs: check-dependencies version
 	rm -rf html/
 	COLUMNS=80 uv run -m $(MODULE_NAME) --help > _generated_command_line_help.txt || true
-	VERSION=$(VERSION_STR) uv run cal-mkdocs -f docs/mkdocs.yml -d docs/mkdocs -o html/
+	VERSION=$(VERSION_STR) uv run wj-mkdocs -f docs/mkdocs.yml -d docs/mkdocs -o html/
 	cp docs/docinfo.* html/
 	rm _generated_command_line_help.txt
 
