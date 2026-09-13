@@ -1,3 +1,8 @@
+# wj-burnerca 1.0.1 - 13 Sep 2026
+
+Packaging and documentation metadata tidy-up following the move to
+GitHub.
+
 # wj-burnerca 1.0.0 - 30 May 2026
 
 First official release. Moved to new GitHub location: https://github.com/WaterJuice/wj-burnerca
