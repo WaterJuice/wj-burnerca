@@ -909,11 +909,11 @@ wheels = [
 
 [[package]]
 name = "wj-publish"
-version = "1.0.0b3"
+version = "1.0.0"
 source = { registry = "https://gitlab.clearnet.dev/api/v4/groups/cg/-/packages/pypi/simple" }
 dependencies = [
     { name = "twine" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/83/6508cfea620dcc948548e4adf76d9754790f75aacf73741e0e263a4478df/wj_publish-1.0.0b3-py3-none-any.whl", hash = "sha256:51253599bf1bd33da6a73ce526f91c0ed5fb17e23e06d289659e44ed9d7973af", size = 27893, upload-time = "2026-05-25T11:07:57.835Z" },
+    { url = "https://files.pythonhosted.org/packages/08/8b/4402deb5081439dbe032b214b4323d4669865684e7d5c5cc20dd2b062caf/wj_publish-1.0.0-py3-none-any.whl", hash = "sha256:1b9b0180aeadc51edcba8f87a6524dfb270cead9a5bb47ffd6abfc5b4e55a58c", size = 28696, upload-time = "2026-11-23T23:49:48.052Z" },
 ]
