@@ -3,9 +3,9 @@
 A WaterJuice tool for generating single-shot, name-constrained,
 self-destroying Certificate Authorities for local development TLS.
 
-You give it one domain. It generates a CA constrained to that domain,
-issues a cert covering both `<domain>` and `*.<domain>`, verifies the
-chain, and **destroys the CA private key** before exiting.
+You give it one or more domains. It generates a CA constrained to those
+domains, issues one cert covering `<domain>` and `*.<domain>` for each,
+verifies the chain, and **destroys the CA private key** before exiting.
 
 The metaphor is a **burner phone**: single-purpose, used briefly,
 intentionally discarded.
@@ -20,8 +20,8 @@ domain. If it leaks, the attacker can MITM anything you visit.
 `wj-burnerca` narrows this in two complementary ways:
 
 - **Name constraints (RFC 5280, marked critical):** the CA is
-  cryptographically incapable of signing certs outside the one domain
-  you gave it. Modern TLS libraries and browsers enforce this.
+  cryptographically incapable of signing certs outside the domains you
+  gave it. Modern TLS libraries and browsers enforce this.
 - **Key destruction:** after issuing the cert, the CA private key is
   deleted.
 
@@ -44,10 +44,13 @@ as shipped by macOS, or OpenSSL 3.x — both work).
 ## Quick Start
 
 ```bash
-# Default: 365-day validity, output to ./<domain>/
+# Default: 7-day validity, output to ./<domain>/
 wj-burnerca example.com
 
-# Shorter validity
+# Several domains: one CA and one cert, output to ./example.com/
+wj-burnerca example.com example.net
+
+# Longer validity (up to 365 days)
 wj-burnerca example.com --days 30
 
 # Custom output dir
@@ -59,11 +62,13 @@ After a successful run, the output directory contains:
 ```
 <out>/
   rootCA-<domain>.crt     # public CA cert; trust this
-  <domain>.crt            # cert with SANs <domain> and *.<domain>
+  <domain>.crt            # cert with SANs <domain> and *.<domain>, for each domain
   <domain>.key            # cert private key (mode 0600)
   MANIFEST.txt            # human-readable summary, with fingerprints
   trust-instructions.md   # per-OS trust instructions
 ```
+
+With several domains, `<domain>` in the file names is the first one.
 
 ## Trusting the CA
 
@@ -81,7 +86,7 @@ export CURL_CA_BUNDLE="$(pwd)/rootCA-<domain>.crt"  # curl
 |-------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
 | CA key stolen → forge certs for arbitrary domains     | Critical X.509 nameConstraints — CA cryptographically incapable.                                                          |
 | CA key stolen at any time after issuance              | CA key destroyed at end of run; not on disk to steal.                                                                     |
-| Leaf key stolen → MITM the constrained domain         | Accepted; mitigated by short validity and the fact that the constrained domain typically only resolves via `/etc/hosts`.  |
+| Leaf key stolen → MITM the constrained domains        | Accepted; mitigated by short validity and the fact that the constrained domains typically only resolve via `/etc/hosts`.  |
 | Half-completed run leaves CA key on disk              | All work happens in a tempdir; outputs are moved into place only after chain verification; tempdir is shredded otherwise. |
 
 ## Implementation notes

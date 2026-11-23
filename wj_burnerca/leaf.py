@@ -4,8 +4,8 @@
 #
 #   Issuance of the single leaf certificate from the burner root CA.
 #
-#   The leaf has two SANs: the bare domain (`example.test`) and its wildcard
-#   (`*.example.test`). One keypair, one cert.
+#   The leaf has two SANs per domain: the bare domain (`example.test`) and its
+#   wildcard (`*.example.test`). One keypair, one cert, however many domains.
 #
 #   ECDSA P-256 — the strongest modern curve available on both OpenSSL 3.x and the
 #   LibreSSL 3.3.x that ships with macOS.
@@ -15,6 +15,7 @@
 #   Version History
 #   ---------------
 #   May 2026 - Created
+#   Nov 2026 - SANs for several domains; CN kept within 64 characters
 # ----------------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------------
@@ -35,7 +36,7 @@ from wj_burnerca.ca import RootCA
 class IssuedCert:
     """Paths and SAN list for the issued leaf cert."""
 
-    domain: str
+    domains: list[str]
     sans: list[str]
     key_path: Path
     cert_path: Path
@@ -47,10 +48,15 @@ class IssuedCert:
 
 
 # ----------------------------------------------------------------------------------------
-def issue_cert(workdir: Path, root: RootCA, *, domain: str, days: int) -> IssuedCert:
-    """Generate a keypair, CSR, and signed leaf cert for `domain` and `*.domain`."""
-    sans = [domain, f"*.{domain}"]
-    stem = domain
+def issue_cert(
+    workdir: Path, root: RootCA, *, domains: list[str], days: int
+) -> IssuedCert:
+    """Generate a keypair, CSR, and signed leaf cert for each domain and its wildcard.
+
+    The first domain names the files and the subject CN.
+    """
+    sans = [name for domain in domains for name in (domain, f"*.{domain}")]
+    stem = domains[0]
 
     key_path = workdir / f"{stem}.key"
     csr_path = workdir / f"{stem}.csr"
@@ -69,13 +75,15 @@ def issue_cert(workdir: Path, root: RootCA, *, domain: str, days: int) -> Issued
     ])  # fmt: skip
     key_path.chmod(0o600)
 
-    # Subject CN is the bare domain; modern verifiers ignore CN entirely and use SANs,
-    # but populating it keeps `openssl x509 -text` output readable.
+    # Subject CN is the first domain; modern verifiers ignore CN entirely and use SANs,
+    # but populating it keeps `openssl x509 -text` output readable. A domain over
+    # X.509's 64-character limit becomes `...<end of domain>`, which can't be mistaken
+    # for a hostname.
     openssl.run([
         "req",
         "-new",
         "-key", str(key_path),
-        "-subj", f"/CN={domain}",
+        "-subj", f"/CN={openssl.fit_name('', domains[0])}",
         "-out", str(csr_path),
     ])  # fmt: skip
 
@@ -93,7 +101,9 @@ def issue_cert(workdir: Path, root: RootCA, *, domain: str, days: int) -> Issued
         "-out", str(cert_path),
     ])  # fmt: skip
 
-    return IssuedCert(domain=domain, sans=sans, key_path=key_path, cert_path=cert_path)
+    return IssuedCert(
+        domains=domains, sans=sans, key_path=key_path, cert_path=cert_path
+    )
 
 
 # ----------------------------------------------------------------------------------------

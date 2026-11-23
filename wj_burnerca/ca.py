@@ -3,7 +3,7 @@
 #   -----
 #
 #   Root CA generation: ECDSA P-256 keypair, openssl config (with critical name
-#   constraints scoped to the user's domain), self-signed cert with the same validity
+#   constraints scoped to the user's domains), self-signed cert with the same validity
 #   as the leaf it will sign.
 #
 #   The CA private key is written into the workdir only and is destroyed by
@@ -18,6 +18,7 @@
 #   Version History
 #   ---------------
 #   May 2026 - Created
+#   Nov 2026 - Constrained to several domains; subject kept within 64 characters
 # ----------------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------------
@@ -40,7 +41,7 @@ class RootCA:
     key_path: Path
     cert_path: Path
     common_name: str
-    domain: str
+    domains: list[str]
 
 
 # ----------------------------------------------------------------------------------------
@@ -49,26 +50,26 @@ class RootCA:
 
 
 # ----------------------------------------------------------------------------------------
-def generate_root_ca(workdir: Path, *, domain: str, days: int) -> RootCA:
+def generate_root_ca(workdir: Path, *, domains: list[str], days: int) -> RootCA:
     """Generate the root keypair, openssl config, and self-signed root cert.
 
     Parameters:
         workdir: Tempdir to write all artefacts into.
-        domain:  The single domain this burner CA exists to serve. Used for the CN/O
-                 (`wj-burnerca: <domain>`) and as the sole permitted DNS name in the
-                 critical X.509 nameConstraints extension.
+        domains: The domains this burner CA exists to serve. Each one is a permitted
+                 DNS name in the critical X.509 nameConstraints extension. The first
+                 one names the CA (`wj-burnerca: <domain>`) and its files.
         days:    Validity in days. Both the root and the leaf use the same value, so
                  the burner CA expires when its only leaf does.
     """
-    common_name = f"wj-burnerca: {domain}"
+    common_name = _common_name(domains)
 
     config_path = workdir / "openssl.cnf"
-    config_path.write_text(_render_openssl_config(common_name, domain))
+    config_path.write_text(_render_openssl_config(common_name, domains))
 
-    # Domain in the filename: when a user has CAs for multiple domains, this stops
+    # Domain in the filename: when a user has several burner CAs, this stops
     # `rootCA.crt`s from clobbering each other if they're ever copied side by side
     # (e.g. into a system trust store).
-    stem = f"rootCA-{domain}"
+    stem = f"rootCA-{domains[0]}"
     key_path = workdir / f"{stem}.key"
     cert_path = workdir / f"{stem}.crt"
 
@@ -107,7 +108,7 @@ def generate_root_ca(workdir: Path, *, domain: str, days: int) -> RootCA:
         key_path=key_path,
         cert_path=cert_path,
         common_name=common_name,
-        domain=domain,
+        domains=domains,
     )
 
 
@@ -117,14 +118,29 @@ def generate_root_ca(workdir: Path, *, domain: str, days: int) -> RootCA:
 
 
 # ----------------------------------------------------------------------------------------
-def _render_openssl_config(common_name: str, domain: str) -> str:
+def _common_name(domains: list[str]) -> str:
+    """Return the CA's name: `wj-burnerca: <first domain>`, plus a count of any others.
+
+    For example `wj-burnerca: example.test (+2 more)`. The name has to fit X.509's
+    64-character limit, so a long first domain is shortened. The full list is in the
+    name constraints.
+    """
+    extra = len(domains) - 1
+    suffix = f" (+{extra} more)" if extra else ""
+    return openssl.fit_name("wj-burnerca: ", domains[0], suffix)
+
+
+# ----------------------------------------------------------------------------------------
+def _render_openssl_config(common_name: str, domains: list[str]) -> str:
     """Render the openssl config used to self-sign the root CA.
 
     The `v3_ca` section is applied with `-extensions v3_ca`. The nameConstraints
-    are inlined (rather than referenced from a sub-section): openssl config
-    sub-sections require unique LHS keys, and the inline form is well supported by
-    both OpenSSL 3.x and LibreSSL 3.3.x.
+    are inlined (rather than referenced from a sub-section), with one
+    `permitted;DNS:` entry per domain: openssl config sub-sections require unique
+    LHS keys, and the inline form is well supported by both OpenSSL 3.x and
+    LibreSSL 3.3.x.
     """
+    permitted = ", ".join(f"permitted;DNS:{domain}" for domain in domains)
     return f"""\
 [ req ]
 distinguished_name = req_distinguished_name
@@ -140,5 +156,5 @@ basicConstraints       = critical, CA:TRUE
 keyUsage               = critical, keyCertSign, cRLSign
 subjectKeyIdentifier   = hash
 authorityKeyIdentifier = keyid:always, issuer
-nameConstraints        = critical, permitted;DNS:{domain}
+nameConstraints        = critical, {permitted}
 """

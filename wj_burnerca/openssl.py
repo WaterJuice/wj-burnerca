@@ -3,8 +3,8 @@
 #   ----------
 #
 #   Thin wrapper over the `openssl` subprocess. Exposes a single `run()` helper that
-#   raises a structured error on non-zero exit, plus a small x509-adjacent helper
-#   (`random_serial_hex`) that both ca.py and leaf.py need.
+#   raises a structured error on non-zero exit, plus small x509-adjacent helpers
+#   (`random_serial_hex`, `fit_name`) that both ca.py and leaf.py need.
 #
 #   Tested against macOS LibreSSL 3.3.x and OpenSSL 3.x. The wrapper sticks to the
 #   common subset of subcommands (`genpkey`, `req`, `x509`, `verify`) so both
@@ -15,6 +15,7 @@
 #   Version History
 #   ---------------
 #   May 2026 - Created
+#   Nov 2026 - Added fit_name() for the 64-character X.509 name limit
 # ----------------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------------
@@ -26,6 +27,15 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+# ----------------------------------------------------------------------------------------
+#   Constants
+# ----------------------------------------------------------------------------------------
+
+# X.509 caps commonName and organizationName at 64 characters (RFC 5280's
+# ub-common-name and ub-organization-name), and openssl refuses longer values with
+# `string too long`.
+MAX_NAME_LEN = 64
 
 # ----------------------------------------------------------------------------------------
 #   Module state
@@ -97,6 +107,20 @@ def random_serial_hex() -> str:
     159 bits keeps the high bit clear so the DER encoding is unambiguously positive.
     """
     return f"{secrets.randbits(159):040x}"
+
+
+# ----------------------------------------------------------------------------------------
+def fit_name(prefix: str, domain: str, suffix: str = "") -> str:
+    """Return `prefix + domain + suffix`, shortened to fit an X.509 name field.
+
+    If it's over MAX_NAME_LEN, the start of the domain is replaced with `...`, which
+    keeps the more recognisable right-hand end. This is only for display names (CN
+    and O): the SANs and name constraints always carry the full domain.
+    """
+    room = MAX_NAME_LEN - len(prefix) - len(suffix)
+    if len(domain) > room:
+        domain = "..." + domain[-(room - 3) :]
+    return f"{prefix}{domain}{suffix}"
 
 
 # ----------------------------------------------------------------------------------------

@@ -3,11 +3,11 @@
 A WaterJuice tool for generating single-shot, name-constrained,
 self-destroying Certificate Authorities for local development TLS.
 
-`wj-burnerca` is a one-shot CLI. You give it one domain. It:
+`wj-burnerca` is a one-shot CLI. You give it one or more domains. It:
 
 1. Generates a root Certificate Authority constrained — cryptographically
-   — to that single domain.
-2. Issues one cert covering both `<domain>` and `*.<domain>`.
+   — to those domains.
+2. Issues one cert covering `<domain>` and `*.<domain>` for each of them.
 3. Verifies the chain.
 4. **Destroys the CA private key.**
 5. Outputs the public CA certificate and the cert/key pair.
@@ -29,8 +29,8 @@ attacker can MITM anything you visit.
 `wj-burnerca` narrows this in two complementary ways:
 
 - **Name constraints (RFC 5280, marked critical):** the CA is
-  cryptographically incapable of signing certs outside the one domain
-  you gave it. Browsers and modern TLS libraries enforce this.
+  cryptographically incapable of signing certs outside the domains you
+  gave it. Browsers and modern TLS libraries enforce this.
 - **Key destruction:** after issuing the cert, the CA private key is
   deleted.
 
@@ -53,10 +53,13 @@ shipped by macOS, or OpenSSL 3.x).
 ## Usage
 
 ```bash
-# The simple case — one domain, default 365-day validity, output to ./<domain>/
+# The simple case — one domain, default 7-day validity, output to ./<domain>/
 wj-burnerca example.com
 
-# Pick a shorter validity
+# Several domains — one CA and one cert for all of them, output to ./example.com/
+wj-burnerca example.com example.net
+
+# Pick a longer validity (up to 365 days)
 wj-burnerca example.com --days 30
 
 # Pick where to put the output
@@ -71,12 +74,13 @@ After a successful run, the output directory contains:
 ```
 <out>/
   rootCA-<domain>.crt     # public CA cert; trust this
-  <domain>.crt            # cert with SANs <domain> and *.<domain>
+  <domain>.crt            # cert with SANs <domain> and *.<domain>, for each domain
   <domain>.key            # cert private key (mode 0600)
   MANIFEST.txt            # human-readable summary, with fingerprints
   trust-instructions.md   # per-OS trust instructions
 ```
 
+With several domains, `<domain>` in the file names is the first one.
 The CA private key is destroyed before the tool exits.
 
 ## Trusting the CA
@@ -101,12 +105,12 @@ in `trust-instructions.md` install into the **user** keychain only.
 
 ## Flags
 
-| Flag                | Required | Default          | Description                                                                                                                |
-|---------------------|----------|------------------|----------------------------------------------------------------------------------------------------------------------------|
-| `domain`            | Yes      | —                | Bare domain (e.g. `example.com`). The CA is name-constrained to this domain; the cert covers `<domain>` and `*.<domain>`. |
-| `--days N`, `-d N`  | No       | `365`            | Validity for both the CA and the cert (they expire together). Range 1–365.                                                 |
-| `--out DIR`, `-o`   | No       | `./<domain>/`    | Output directory.                                                                                                          |
-| `--force`, `-f`     | No       | off              | Overwrite an existing non-empty `--out` directory.                                                                         |
+| Flag               | Required | Default             | Description                                                                                                                                                                    |
+|--------------------|----------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `domain …`         | Yes      | —                   | One or more bare domains (e.g. `example.com`). The CA is name-constrained to them; the cert covers `<domain>` and `*.<domain>` for each. The first one names the output files. |
+| `--days N`, `-d N` | No       | `7`                 | Validity for both the CA and the cert (they expire together). Range 1–365.                                                                                                     |
+| `--out DIR`, `-o`  | No       | `./<first domain>/` | Output directory.                                                                                                                                                              |
+| `--force`, `-f`    | No       | off                 | Overwrite an existing non-empty `--out` directory.                                                                                                                             |
 
 That's it.
 
@@ -122,8 +126,9 @@ That's it.
 ## Using with `tls-switch`
 
 The cert and key drop straight into [`tls-switch`](https://github.com/WaterJuice/tls-switch)'s
-`terminate` mode. Because the cert covers `<domain>` and `*.<domain>`,
-multiple SNI hostnames can share a single cert/key pair:
+`terminate` mode. Because the cert covers `<domain>` and `*.<domain>` for
+every domain you gave it, multiple SNI hostnames can share a single
+cert/key pair:
 
 ```json
 {
@@ -175,12 +180,16 @@ its `genpkey -algorithm` set. P-256 is the strongest curve available
 on both LibreSSL 3.3 and OpenSSL 3.x.
 
 **Can the cert cover `foo.bar.example.com`?**
-Not from a single `wj-burnerca example.com` run — the wildcard SAN
-`*.example.com` only matches one DNS label per RFC 6125. For
-two-level depth, run `wj-burnerca bar.example.com`, which covers
-both `bar.example.com` and `*.bar.example.com`. The CA's name
-constraint (`permitted;DNS:bar.example.com`) still keeps the blast
-radius bounded.
+Yes, if you pass `bar.example.com` as well. The wildcard SAN
+`*.example.com` only matches one DNS label per RFC 6125, so
+`wj-burnerca example.com bar.example.com` issues one cert covering
+`example.com`, `*.example.com`, `bar.example.com` and
+`*.bar.example.com`, all from one CA.
+
+**Should I put all my domains in one run?**
+Only domains you're happy to trust together. One root then vouches for
+all of them, and one cert key covers them all. Separate runs keep each
+domain behind its own root and key, at the cost of trusting more roots.
 
 **Can I get a cert for an IP address?**
 No. IP addresses need a `subjectAltName=IP:` SAN, not `DNS:`. The

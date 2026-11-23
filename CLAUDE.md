@@ -4,10 +4,10 @@ This file provides guidance for AI agents working on this project.
 
 ## Project Overview
 
-**wj-burnerca** is a one-shot CLI that takes one domain, generates a
-name-constrained root Certificate Authority for it, issues a single cert
-covering both `<domain>` and `*.<domain>`, verifies the chain, and then
-destroys the CA private key. It is designed for local development TLS
+**wj-burnerca** is a one-shot CLI that takes one or more domains,
+generates a root Certificate Authority name-constrained to them, issues
+a single cert covering `<domain>` and `*.<domain>` for each, verifies
+the chain, and then destroys the CA private key. It is designed for local development TLS
 where you need a real CA but want a strictly bounded blast radius.
 
 The metaphor is a **burner phone**: single-purpose, used briefly,
@@ -36,8 +36,9 @@ ec_param_enc:named_curve` on every `genpkey` call — see the comment in
 `ASN1 OID: prime256v1` rather than the long
 `Field Type / Prime / A / B / Generator / Order` block.
 
-Surface area is intentionally tiny. The CLI takes one positional
-`domain` argument plus `--days`, `--out`, `--force`. Don't add flags
+Surface area is intentionally tiny. The CLI takes one or more
+positional `domain` arguments plus `--days`, `--out`, `--force`. The
+first domain names the output files and the CA. Don't add flags
 without a clear, repeated user need: every flag is an opportunity to
 hold the tool wrong.
 
@@ -101,6 +102,10 @@ When writing openssl invocations:
 - `openssl genpkey` and `openssl req`/`openssl x509` are available on
   both. Stick to the common subset.
 - `openssl verify -CAfile <root> <leaf>` works identically.
+- X.509 caps subject `CN` and `O` values at 64 characters, and both
+  libraries refuse longer ones (`string too long`). Build subject names
+  with `openssl.fit_name()`; SANs and name constraints always carry the
+  full domain.
 
 ## Common Commands
 

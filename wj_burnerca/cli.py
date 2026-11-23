@@ -4,11 +4,11 @@
 #
 #   Command-line interface and orchestration for wj-burnerca.
 #
-#   Surface area is intentionally tiny: one positional `domain`, one optional
-#   `--days`, plus `--out` and `--force`. The CA's name and constraint are derived
-#   from the domain; the cert covers `domain` and `*.domain` automatically; both the
-#   CA and the cert get the same validity period (so the burner CA expires when its
-#   only cert does); the CA private key is always destroyed before exit.
+#   Surface area is intentionally tiny: one or more positional domains, one optional
+#   `--days`, plus `--out` and `--force`. The CA's name and constraints are derived
+#   from the domains; the cert covers each `domain` and `*.domain` automatically; both
+#   the CA and the cert get the same validity period (so the burner CA expires when
+#   its only cert does); the CA private key is always destroyed before exit.
 #
 #   Responsibilities:
 #   - Parse and validate args.
@@ -23,6 +23,8 @@
 #   Version History
 #   ---------------
 #   May 2026 - Created
+#   Nov 2026 - Several domains per run; 7-day default; domain length and ASCII checks;
+#              usage errors exit 1
 # ----------------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------------
@@ -49,8 +51,17 @@ from .argbuilder import Namespace
 #   Constants
 # ----------------------------------------------------------------------------------------
 
-DEFAULT_DAYS = 365
+DEFAULT_DAYS = 7
 MAX_DAYS = 365
+
+# DNS caps a name at 253 characters, and the cert's wildcard SAN (`*.<domain>`) has
+# to fit as well as the domain itself.
+MAX_DOMAIN_LEN = 253 - len("*.")
+
+# The first domain also names the output files. The longest name built from it is
+# `wj-burnerca-<domain>.crt`, which trust-instructions.md copies into system trust
+# stores, and macOS and Linux cap a filename at 255 bytes.
+MAX_FIRST_DOMAIN_LEN = 255 - len("wj-burnerca-.crt")
 
 # Exit codes (per spec section 5).
 EXIT_OK = 0
@@ -95,7 +106,7 @@ For more information, please refer to <https://unlicense.org>"""
 class Options:
     """Validated options derived from argv."""
 
-    domain: str
+    domains: list[str]
     days: int
     out: Path
     force: bool
@@ -114,18 +125,20 @@ def parse_args(argv: list[str]) -> Namespace:
         description=(
             f"wj-burnerca: {VERSION_STR}\n"
             "(c) 2026 WaterJuice. Unlicense.\n\n"
-            "Generate a name-constrained, self-destroying CA for one domain. "
-            "Issues a single cert covering both `<domain>` and `*.<domain>`, "
+            "Generate a name-constrained, self-destroying CA for one or more domains. "
+            "Issues a single cert covering `<domain>` and `*.<domain>` for each, "
             "verifies the chain, then destroys the CA key."
         ),
         version=f"wj-burnerca: {VERSION_STR}\npython: {sys.version.split()[0]}",
     )
     p.add_argument(
-        "domain",
+        "domains",
+        nargs="+",
+        metavar="domain",
         help=(
-            "The domain this burner CA exists to serve (e.g. 'example.test'). "
-            "The CA is name-constrained to this domain and the issued cert covers "
-            "both the bare name and its wildcard."
+            "The domains this burner CA exists to serve (e.g. 'example.test'). "
+            "The CA is name-constrained to them and the issued cert covers each "
+            "bare name and its wildcard. The first domain names the output files."
         ),
     )
     p.add_argument(
@@ -139,7 +152,7 @@ def parse_args(argv: list[str]) -> Namespace:
         "--out", "-o",
         default=None,
         metavar="DIR",
-        help="Output directory (default: ./<domain>/).",
+        help="Output directory (default: ./<first domain>/).",
     )  # fmt: skip
     p.add_argument(
         "--force", "-f",
@@ -158,18 +171,28 @@ def parse_args(argv: list[str]) -> Namespace:
 # ----------------------------------------------------------------------------------------
 def resolve_options(ns: Namespace) -> Options:
     """Validate parsed args and produce the typed Options the rest of the tool uses."""
-    domain = cast("str", ns.domain).strip()
-    _validate_domain(domain)
+    # DNS names are case-insensitive, so lowercase them, then drop repeats. Order is
+    # kept because the first domain names the output files.
+    raw = cast("list[str]", ns.domains)
+    domains = list(dict.fromkeys(d.strip().lower() for d in raw))
+    for domain in domains:
+        _validate_domain(domain)
+    if len(domains[0]) > MAX_FIRST_DOMAIN_LEN:
+        raise SystemExit(
+            "the first domain names the output files, so it can be at most "
+            f"{MAX_FIRST_DOMAIN_LEN} characters (got {len(domains[0])}); "
+            "list a shorter domain first"
+        )
 
     days = cast("int", ns.days)
     if days < 1 or days > MAX_DAYS:
         raise SystemExit(f"--days must be between 1 and {MAX_DAYS}, got {days}")
 
     out_raw = cast("str | None", ns.out)
-    out = Path(out_raw if out_raw is not None else f"./{domain}").resolve()
+    out = Path(out_raw if out_raw is not None else f"./{domains[0]}").resolve()
 
     return Options(
-        domain=domain,
+        domains=domains,
         days=days,
         out=out,
         force=bool(ns.force),
@@ -180,12 +203,14 @@ def resolve_options(ns: Namespace) -> Options:
 def _validate_domain(name: str) -> None:
     """Reject anything that isn't a syntactically reasonable bare DNS name.
 
-    No leading wildcard is allowed: the CLI takes a single bare domain and
-    automatically issues for both `<domain>` and `*.<domain>`. An IP address
-    is also rejected — it would need a `subjectAltName=IP:` SAN, not `DNS:`.
+    No leading wildcard is allowed: the CLI takes bare domains and automatically
+    issues for both `<domain>` and `*.<domain>`. An IP address is also rejected —
+    it would need a `subjectAltName=IP:` SAN, not `DNS:`.
     """
     if not name:
         raise SystemExit("domain is empty")
+    if len(name) > MAX_DOMAIN_LEN:
+        raise SystemExit(f"domain {name!r} is longer than {MAX_DOMAIN_LEN} characters")
     if name.startswith("*."):
         raise SystemExit(
             "pass a bare domain (e.g. 'example.test'); the wildcard SAN is added automatically"
@@ -201,7 +226,7 @@ def _validate_domain(name: str) -> None:
         if label.startswith("-") or label.endswith("-"):
             raise SystemExit(f"domain {name!r} has a label starting or ending with '-'")
         for ch in label:
-            if not (ch.isalnum() or ch == "-"):
+            if not ((ch.isascii() and ch.isalnum()) or ch == "-"):
                 raise SystemExit(f"domain {name!r} contains invalid character {ch!r}")
     # Reject IPv4 dotted-quad shape: an all-numeric, four-label name would otherwise
     # land in a `subjectAltName=DNS:` SAN, which is the wrong SAN type for an IP.
@@ -230,8 +255,10 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_USAGE
     except SystemExit as e:
         # argbuilder/argparse and resolve_options raise SystemExit with usage messages.
+        # argparse exits 0 for --help/--version and 2 for a usage error; 2 would read
+        # as EXIT_OPENSSL, so report usage errors as EXIT_USAGE.
         if isinstance(e.code, int):
-            return e.code
+            return EXIT_OK if e.code == 0 else EXIT_USAGE
         if e.code:
             print(f"Error: {e.code}", file=sys.stderr)
         return EXIT_USAGE
@@ -276,24 +303,25 @@ def _run(opts: Options) -> int:
 # ----------------------------------------------------------------------------------------
 def _run_in_workdir(opts: Options, workdir: Path) -> int:
     """The body of `_run`, separated so the workdir cleanup can be in `finally`."""
-    print(f"wj-burnerca: {opts.domain}")
+    print(f"wj-burnerca: {', '.join(opts.domains)}")
     print(f"  Validity: {opts.days} days   (CA and cert both expire together)")
 
     # Step 1: root CA.
     try:
-        root = ca.generate_root_ca(workdir, domain=opts.domain, days=opts.days)
+        root = ca.generate_root_ca(workdir, domains=opts.domains, days=opts.days)
     except openssl.OpenSSLError as e:
         print(f"Error: openssl failed during root CA generation:\n{e}", file=sys.stderr)
         return EXIT_OPENSSL
-    print("✓ Root CA generated (constrained to this domain)")
+    scope = "this domain" if len(opts.domains) == 1 else "these domains"
+    print(f"✓ Root CA generated (constrained to {scope})")
 
     # Step 2: leaf cert.
     try:
-        cert = leaf.issue_cert(workdir, root, domain=opts.domain, days=opts.days)
+        cert = leaf.issue_cert(workdir, root, domains=opts.domains, days=opts.days)
     except openssl.OpenSSLError as e:
         print(f"Error: openssl failed during cert issuance:\n{e}", file=sys.stderr)
         return EXIT_OPENSSL
-    print(f"✓ Cert issued for {opts.domain} and *.{opts.domain}")
+    print(f"✓ Cert issued for {', '.join(cert.sans)}")
 
     # Step 3: verify.
     try:

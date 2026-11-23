@@ -13,6 +13,7 @@
 #   Version History
 #   ---------------
 #   May 2026 - Created
+#   Nov 2026 - Lists every domain the CA is constrained to
 # ----------------------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------------------
@@ -66,18 +67,20 @@ def _render_manifest(root: RootCA, cert: IssuedCert) -> str:
     root_fp = _sha256_fingerprint(root.cert_path)
     cert_fp = _sha256_fingerprint(cert.cert_path)
     san_list = ", ".join(cert.sans)
+    domain_list = ", ".join(root.domains)
+    permitted = "".join(f"    permitted DNS: {domain}\n" for domain in root.domains)
 
     return (
         f"wj-burnerca — generated {now}\n"
         f"Hostname: {host}\n"
         f"Tool version: {VERSION_STR}\n"
-        f"Domain: {root.domain}\n"
+        f"Domains: {domain_list}\n"
         "\n"
         "Root CA:\n"
         f"  Subject:       CN={root.common_name}, O={root.common_name}\n"
         f"  Validity:      {root_validity[0]} → {root_validity[1]}\n"
         "  Name constraints (critical):\n"
-        f"    permitted DNS: {root.domain}\n"
+        f"{permitted}"
         f"  SHA-256 fingerprint: {root_fp}\n"
         "  Private key: DESTROYED\n"
         "\n"
@@ -153,13 +156,13 @@ def _pem_to_der(pem: bytes) -> bytes:
 def _render_trust_instructions(root: RootCA) -> str:
     """Render trust-instructions.md, customised with the CA's filename and CN.
 
-    The system-trust-store install destinations include the domain so that
+    The system-trust-store install destinations include the first domain so that
     multiple burner CAs can cohabit a single trust store without clobbering
     each other.
     """
-    cert_file = root.cert_path.name  # rootCA-<domain>.crt
-    cn = root.common_name  # wj-burnerca: <domain>
-    install_stem = f"wj-burnerca-{root.domain}"  # used as the trust-store filename
+    cert_file = root.cert_path.name  # rootCA-<first domain>.crt
+    cn = root.common_name  # wj-burnerca: <first domain>, see ca._common_name()
+    install_stem = f"wj-burnerca-{root.domains[0]}"  # used as the trust-store filename
 
     return f"""\
 # Trusting your burner CA

@@ -2,17 +2,20 @@
 #   test_e2e.py
 #   -----------
 #
-#   End-to-end happy path: run the CLI for one domain and check the outputs are
-#   well-formed, the chain verifies, the cert covers `domain` + `*.domain`, and the
-#   CA key is gone.
+#   End-to-end happy path: run the CLI for one or more domains and check the outputs
+#   are well-formed, the chain verifies, the cert covers each `domain` + `*.domain`,
+#   and the CA key is gone.
 #
 #   (c) 2026 WaterJuice — Unlicense.
 # ----------------------------------------------------------------------------------------
 
 from __future__ import annotations
 import subprocess
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 from wj_burnerca.cli import main
+from .conftest import cert_sans
 from .conftest import openssl_text
 
 
@@ -95,17 +98,83 @@ def test_ca_and_cert_share_validity(tmp_out: Path) -> None:
     """The CA must expire on the same day as the cert it signed."""
     rc = main(["example.test", "--days", "30", "--out", str(tmp_out)])
     assert rc == 0
-    root_after = _not_after(tmp_out / "rootCA-example.test.crt")
-    cert_after = _not_after(tmp_out / "example.test.crt")
+    root_after = _validity(tmp_out / "rootCA-example.test.crt")[1]
+    cert_after = _validity(tmp_out / "example.test.crt")[1]
     assert root_after == cert_after, (root_after, cert_after)
 
 
 # ----------------------------------------------------------------------------------------
-def _not_after(cert: Path) -> str:
+def test_default_validity_is_one_week(tmp_out: Path) -> None:
+    """Without --days, the CA and the cert are both valid for 7 days."""
+    rc = main(["example.test", "--out", str(tmp_out)])
+    assert rc == 0
+    for name in ("rootCA-example.test.crt", "example.test.crt"):
+        not_before, not_after = _validity(tmp_out / name)
+        assert not_after - not_before == timedelta(days=7), name
+
+
+# ----------------------------------------------------------------------------------------
+def test_several_domains_share_one_ca_and_cert(tmp_out: Path) -> None:
+    """One CA and one cert cover every domain, with the files named after the first."""
+    rc = main(["a.test", "b.test", "c.test", "--out", str(tmp_out)])
+    assert rc == 0, f"main exited {rc}"
+
+    actual = sorted(p.name for p in tmp_out.iterdir())
+    expected = sorted(
+        [
+            "rootCA-a.test.crt",
+            "a.test.crt",
+            "a.test.key",
+            "MANIFEST.txt",
+            "trust-instructions.md",
+        ]
+    )
+    assert actual == expected, actual
+
+    root = tmp_out / "rootCA-a.test.crt"
+    cert = tmp_out / "a.test.crt"
     proc = subprocess.run(
-        ["openssl", "x509", "-in", str(cert), "-noout", "-enddate"],
+        ["openssl", "verify", "-CAfile", str(root), str(cert)],
         capture_output=True,
         text=True,
         check=True,
     )
-    return proc.stdout.strip().split("=", 1)[1]
+    assert "OK" in proc.stdout
+    assert cert_sans(cert) == [
+        "a.test",
+        "*.a.test",
+        "b.test",
+        "*.b.test",
+        "c.test",
+        "*.c.test",
+    ]
+
+    manifest = (tmp_out / "MANIFEST.txt").read_text()
+    assert "Domains: a.test, b.test, c.test" in manifest
+    for domain in ("a.test", "b.test", "c.test"):
+        assert f"permitted DNS: {domain}\n" in manifest
+
+
+# ----------------------------------------------------------------------------------------
+def test_domains_are_lowercased_and_deduplicated(tmp_out: Path) -> None:
+    rc = main(["Example.TEST", "b.test", "example.test", "--out", str(tmp_out)])
+    assert rc == 0
+    cert = tmp_out / "example.test.crt"
+    assert cert_sans(cert) == ["example.test", "*.example.test", "b.test", "*.b.test"]
+
+
+# ----------------------------------------------------------------------------------------
+def _validity(cert: Path) -> tuple[datetime, datetime]:
+    """Return the cert's (notBefore, notAfter)."""
+    proc = subprocess.run(
+        ["openssl", "x509", "-in", str(cert), "-noout", "-startdate", "-enddate"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    dates = dict(line.split("=", 1) for line in proc.stdout.splitlines())
+    fmt = "%b %d %H:%M:%S %Y %Z"
+    return (
+        datetime.strptime(dates["notBefore"], fmt),
+        datetime.strptime(dates["notAfter"], fmt),
+    )

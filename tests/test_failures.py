@@ -2,7 +2,8 @@
 #   test_failures.py
 #   ----------------
 #
-#   Validation-layer failures: missing args, bad domain, out-of-range --days.
+#   Validation-layer failures: missing or malformed args, bad domains, out-of-range
+#   --days. All of them must exit with EXIT_USAGE and write nothing.
 #
 #   (c) 2026 WaterJuice — Unlicense.
 # ----------------------------------------------------------------------------------------
@@ -15,9 +16,29 @@ from wj_burnerca.cli import main
 
 
 # ----------------------------------------------------------------------------------------
-def test_missing_domain_exits_nonzero() -> None:
+def test_missing_domain_is_usage_error() -> None:
+    # argparse itself exits 2 here, which must not leak out as EXIT_OPENSSL.
     rc = main([])
-    assert rc != EXIT_OK
+    assert rc == EXIT_USAGE
+
+
+# ----------------------------------------------------------------------------------------
+def test_non_numeric_days_is_usage_error(tmp_out: Path) -> None:
+    rc = main(["example.test", "--out", str(tmp_out), "--days", "abc"])
+    assert rc == EXIT_USAGE
+    assert not tmp_out.exists()
+
+
+# ----------------------------------------------------------------------------------------
+def test_help_exits_ok() -> None:
+    assert main(["--help"]) == EXIT_OK
+
+
+# ----------------------------------------------------------------------------------------
+def test_one_bad_domain_rejects_the_run(tmp_out: Path) -> None:
+    rc = main(["a.test", "not a domain!", "--out", str(tmp_out)])
+    assert rc == EXIT_USAGE
+    assert not tmp_out.exists()
 
 
 # ----------------------------------------------------------------------------------------
@@ -70,6 +91,17 @@ def test_label_with_leading_hyphen_rejected(tmp_out: Path) -> None:
 def test_label_with_trailing_hyphen_rejected(tmp_out: Path) -> None:
     rc = main(["foo-.example.test", "--out", str(tmp_out)])
     assert rc == EXIT_USAGE
+
+
+# ----------------------------------------------------------------------------------------
+def test_non_ascii_domain_rejected(tmp_out: Path) -> None:
+    """A raw `ä` would land in a DNS SAN and fail verification; punycode works."""
+    rc = main(["exämple.test", "--out", str(tmp_out)])
+    assert rc == EXIT_USAGE
+    assert not tmp_out.exists()
+
+    punycode = "exämple.test".encode("idna").decode()  # xn--exmple-cua.test
+    assert main([punycode, "--out", str(tmp_out)]) == EXIT_OK
 
 
 # ----------------------------------------------------------------------------------------
